@@ -14,6 +14,7 @@ class TreeNodeModel {
         this.traceId = traceId;
         this.parent = parent;
         this.prevSibling = prevSibling;
+        this.count = 0;
         this.error = error;
 
         this.children = [];
@@ -25,10 +26,11 @@ class TreeNodeModel {
 }
 
 let myChart;
-let rootNode;
+let rootNodes = [];
 let width;
 let height;
 let maxDelay;
+let mergedTree;
 
 define([
             'jquery',
@@ -76,11 +78,17 @@ define([
                 }
             }
             
+            let nodes = [];
             if (isOneFieldMissing) {
                 throw new SplunkVisualizationBase.VisualizationError("Missing at least one mandatory field. Missing: \'" + missingField + "\'");
             }
+            else {
+                // Getting a formatted array of nodes
+                nodes = this.formatInputAndCreateRootNodes(data);
+                // console.log(nodes)
+            }
 
-            return data;
+            return nodes;
         },
   
         // Implement updateView to render a visualization.
@@ -97,29 +105,31 @@ define([
             maxDelay = config[this.getPropertyNamespaceInfo().propertyNamespace + 'maxDelay'] || 2000;
 
             // logic here to build options from data
+            let nodes = data;
 
-            // Getting a formatted array of nodes
-            let nodes = this.formatInputAndCreateRootNode(data);
-            // console.log(nodes);
+            // Convert from nodes array to effective Tree structure
+            this.buildTrees(nodes);
+            // Merge trees into one
+            mergedTree = this.getMergedTree();
+            
+            // Place nodes the right place (x,y)
+            this.prepareData(mergedTree, null, 0);
+            this.calculateInitialValues(mergedTree);
+            this.calculateFinalValues(mergedTree, 0);
+            this.updateYVals(mergedTree);
+            this.fixNodeConflicts(mergedTree);
 
-            this.buildTreeRecursively(rootNode, nodes);
-            this.prepareData(rootNode, null, 0);
-            this.calculateInitialValues(rootNode);
-            this.calculateFinalValues(rootNode, 0);
-            this.updateYVals(rootNode);
-            this.fixNodeConflicts(rootNode);
-
-            // console.log(rootNode);
+            // console.log(mergedTree);
 
             // Creating objects for graph construction
             let chartData = [];
             let links = [];
 
-            let [treeWidth, treeHeight] = this.getDimensions(rootNode);
+            let [treeWidth, treeHeight] = this.getDimensions(mergedTree);
             let levelWidth = width / (treeWidth + 1);
             let levelHeight = height / (treeHeight + 1);
 
-            this.createGraphNodesAndLinks(rootNode, chartData, links, levelWidth, levelHeight);
+            this.createGraphNodesAndLinks(mergedTree, chartData, links, levelWidth, levelHeight);
             
             option = {
                 tooltip: {},
@@ -163,35 +173,90 @@ define([
 
         },
 
-        formatInputAndCreateRootNode: function(data) {
+        formatInputAndCreateRootNodes: function(data) {
             let fields = data.fields;
             let rows = data.rows;
             var nodes = [];
-            var masterNode = {};
             rows.forEach(row => {
                 let node = {};
                 fields.forEach(function(field, index) {
                     node[field.name] = row[index];
                 });
-                if(node.parentId == null){
-                    masterNode = node;
+                if(node.parentId == null || node.parentId == ""){
+                    rootNodes.push(new TreeNodeModel(node.id, node.timestamp, node.duration, node.kind, node.name, node.parentId, node.traceId, null, null, node.error));
                 }
                 nodes.push(node);
             });
-            rootNode = new TreeNodeModel(masterNode.id, masterNode.timestamp, masterNode.duration, masterNode.kind, masterNode.name, masterNode.parentId, masterNode.traceId, null, null, masterNode.error);
             return nodes;
         },
 
+        buildTrees: function(nodes) {
+            rootNodes.forEach(rootNode => {
+                this.buildTreeRecursively(rootNode, nodes);
+            });
+        },
+
         buildTreeRecursively: function(node, nodesList) {
-            if(nodesList){
+            if(nodesList) {
                 nodesList.forEach(n => {
-                    if(node.id === n.parentId){
+                    if(node.traceId === n.traceId && node.id === n.parentId){
                         let graphNode = new TreeNodeModel(n.id, n.timestamp, n.duration, n.kind, n.name, n.parentId, n.traceId, node, null, n.error);
                         this.buildTreeRecursively(graphNode, nodesList);
                         node.children.push(graphNode);
                     }
                 });
             }
+        },
+
+        searchTree: function(node, matchingName) {
+            if (node.name == matchingName){
+                return node;
+            }
+            else if (node.children != null){
+                var i;
+                var result = null;
+                for( i = 0 ; result == null && i < node.children.length ; i++ ){
+                     result = this.searchTree(node.children[i], matchingName);
+                }
+                return result;
+           }
+           return null;
+        },
+
+        getMergedTree: function() {
+            let resTree = new TreeNodeModel();
+            resTree.name = rootNodes[0].name;
+            resTree.id = 0;
+            let id = 1;
+            let nodesInRes = new Set([rootNodes[0].name]);
+            rootNodes.forEach(rootNode => {
+                let nodes = [rootNode];
+                while (nodes.length) {
+                    let node = nodes.shift();
+                    nodes = nodes.concat(node.children);
+                    
+                    if (nodesInRes.has(node.name)) {
+                        let nodeInRes = this.searchTree(resTree, node.name);
+                        nodeInRes.count += 1;
+                        // Compute? errors, etc.g
+                    }
+                    else {
+                        nodesInRes.add(node.name);
+                        let nodeParent = this.searchTree(resTree, node.parent.name);
+                        let treeNode = new TreeNodeModel();
+                        treeNode.name = node.name;
+                        treeNode.count += 1;
+                        treeNode.id = id;
+                        id++;
+                        treeNode.parentId = nodeParent.id;
+                        treeNode.parent = nodeParent;
+                        nodeParent.children.push(treeNode);
+                    }
+
+                }
+            });
+
+            return resTree;
         },
 
         prepareData: function(node, prevSibling, level) {
@@ -411,11 +476,11 @@ define([
             let chartData = [];
             let links = [];
 
-            let [treeWidth, treeHeight] = this.getDimensions(rootNode);
+            let [treeWidth, treeHeight] = this.getDimensions(mergedTree);
             let levelWidth = width / (treeWidth + 1);
             let levelHeight = height / (treeHeight + 1);
 
-            this.createGraphNodesAndLinks(rootNode, chartData, links, levelWidth, levelHeight);
+            this.createGraphNodesAndLinks(mergedTree, chartData, links, levelWidth, levelHeight);
 
             // console.log(chartData);
             
