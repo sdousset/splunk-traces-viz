@@ -60,7 +60,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	        this.traceId = traceId;
 	        this.parent = parent;
 	        this.prevSibling = prevSibling;
-	        this.count = 0;
+	        this.requestNumber = 0;
 	        this.error = error;
 
 	        this.children = [];
@@ -130,7 +130,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            else {
 	                // Getting a formatted array of nodes
 	                nodes = this.formatInputAndCreateRootNodes(data);
-	                // console.log(nodes)
+	                console.log(nodes)
 	            }
 
 	            return nodes;
@@ -142,6 +142,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	        updateView: function(data, config) {
 
 	            // Initialize chart with DOM
+	            // TODO: check is chart is initialized
 	            myChart = echarts.init(this.el);
 	            var option = {};
 	            width =  myChart._dom.clientWidth;
@@ -156,7 +157,9 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            this.buildTrees(nodes);
 	            // Merge trees into one
 	            mergedTree = this.getMergedTree();
-	            
+
+	            console.log(mergedTree);
+
 	            // Place nodes the right place (x,y)
 	            this.prepareData(mergedTree, null, 0);
 	            this.calculateInitialValues(mergedTree);
@@ -280,19 +283,25 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                    let node = nodes.shift();
 	                    nodes = nodes.concat(node.children);
 	                    
+	                    // If node already placed in tree
 	                    if (nodesInRes.has(node.name)) {
 	                        let nodeInRes = this.searchTree(resTree, node.name);
-	                        nodeInRes.count += 1;
+	                        nodeInRes.requestNumber += 1;
 	                        // Compute? errors, etc.g
 	                    }
+
+	                    // If node not in tree yet
 	                    else {
+	                        // Add its name to the list
 	                        nodesInRes.add(node.name);
-	                        let nodeParent = this.searchTree(resTree, node.parent.name);
+	                        // Create and initialize it
 	                        let treeNode = new TreeNodeModel();
 	                        treeNode.name = node.name;
-	                        treeNode.count += 1;
+	                        treeNode.requestNumber += 1;
 	                        treeNode.id = id;
 	                        id++;
+	                        // Search for its parent and add it as a child
+	                        let nodeParent = this.searchTree(resTree, node.parent.name);
 	                        treeNode.parentId = nodeParent.id;
 	                        treeNode.parent = nodeParent;
 	                        nodeParent.children.push(treeNode);
@@ -490,9 +499,10 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                    label.fontWeight = 'bold';
 	                    label.color = '#FF7900';
 	                }
+	                // toString to refer to id property of node (otherwise echarts refers to node index in graph)
 	                links.push({
-	                    source: node.parent.id,
-	                    target: node.id,
+	                    source: node.parentId.toString(),
+	                    target: node.id.toString(),
 	                    label: label,
 	                    lineStyle: lineStyle
 	                })
@@ -527,8 +537,6 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 	            this.createGraphNodesAndLinks(mergedTree, chartData, links, levelWidth, levelHeight);
 
-	            // console.log(chartData);
-	            
 	            option = {
 	                tooltip: {},
 	                animationDurationUpdate: 1500,

@@ -14,8 +14,12 @@ class TreeNodeModel {
         this.traceId = traceId;
         this.parent = parent;
         this.prevSibling = prevSibling;
-        this.count = 0;
         this.error = error;
+
+        this.requestNumber = 0;
+        this.errorNumber = 0;
+        this.errorRate = 0;
+        this.errorList = [];
 
         this.children = [];
         this.x = 0;
@@ -85,7 +89,7 @@ define([
             else {
                 // Getting a formatted array of nodes
                 nodes = this.formatInputAndCreateRootNodes(data);
-                // console.log(nodes)
+                console.log(nodes)
             }
 
             return nodes;
@@ -97,6 +101,7 @@ define([
         updateView: function(data, config) {
 
             // Initialize chart with DOM
+            // TODO: check is chart is initialized
             myChart = echarts.init(this.el);
             var option = {};
             width =  myChart._dom.clientWidth;
@@ -111,7 +116,9 @@ define([
             this.buildTrees(nodes);
             // Merge trees into one
             mergedTree = this.getMergedTree();
-            
+
+            console.log(mergedTree);
+
             // Place nodes the right place (x,y)
             this.prepareData(mergedTree, null, 0);
             this.calculateInitialValues(mergedTree);
@@ -235,19 +242,38 @@ define([
                     let node = nodes.shift();
                     nodes = nodes.concat(node.children);
                     
+                    // If node already placed in tree
                     if (nodesInRes.has(node.name)) {
                         let nodeInRes = this.searchTree(resTree, node.name);
-                        nodeInRes.count += 1;
-                        // Compute? errors, etc.g
+                        nodeInRes.requestNumber += 1;
+                        if (node.error) {
+                            nodeInRes.errorNumber += 1;
+                            nodeInRes.errorList.push(node.error);
+                            // Computing error rate, 2 decimals
+                            let errorRate = nodeInRes.errorNumber / nodeInRes.requestNumber;
+                            nodeInRes.errorRate = Math.round(errorRate * 100) / 100;
+                        }
                     }
+
+                    // If node not in tree yet
                     else {
+                        // Add its name to the list
                         nodesInRes.add(node.name);
-                        let nodeParent = this.searchTree(resTree, node.parent.name);
+
+                        // Create and initialize it
                         let treeNode = new TreeNodeModel();
-                        treeNode.name = node.name;
-                        treeNode.count += 1;
                         treeNode.id = id;
                         id++;
+                        treeNode.name = node.name;
+                        treeNode.requestNumber += 1;
+                        if (node.error) {
+                            treeNode.errorNumber += 1;
+                            treeNode.errorList.push(node.error);
+                            treeNode.errorRate = 100;
+                        }
+
+                        // Search for its parent and add it as a child
+                        let nodeParent = this.searchTree(resTree, node.parent.name);
                         treeNode.parentId = nodeParent.id;
                         treeNode.parent = nodeParent;
                         nodeParent.children.push(treeNode);
@@ -445,9 +471,10 @@ define([
                     label.fontWeight = 'bold';
                     label.color = '#FF7900';
                 }
+                // toString to refer to id property of node (otherwise echarts refers to node index in graph)
                 links.push({
-                    source: node.parent.id,
-                    target: node.id,
+                    source: node.parentId.toString(),
+                    target: node.id.toString(),
                     label: label,
                     lineStyle: lineStyle
                 })
@@ -482,8 +509,6 @@ define([
 
             this.createGraphNodesAndLinks(mergedTree, chartData, links, levelWidth, levelHeight);
 
-            // console.log(chartData);
-            
             option = {
                 tooltip: {},
                 animationDurationUpdate: 1500,
