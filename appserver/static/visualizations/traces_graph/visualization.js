@@ -50,17 +50,18 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 	class TreeNodeModel {
 
-	    constructor(id, timestamp, duration, kind, name, parentId, traceId, parent, prevSibling, error){
+	    constructor(id, name, parentName, latency, duration, parent, nbRequests, nbErrors){
 	        this.id = id;
-	        this.timestamp = timestamp;
-	        this.duration = duration;
-	        this.kind = kind;
 	        this.name = name;
-	        this.parentId = parentId;
-	        this.traceId = traceId;
+	        this.parentName = parentName;
+	        this.latency = latency;
+	        this.duration = duration;
+	        this.nbRequests = nbRequests;
+	        this.nbErrors = nbErrors;
+	        this.errorRate = Math.round((nbErrors / nbRequests) * 100) / 100 ;
+
 	        this.parent = parent;
-	        this.prevSibling = prevSibling;
-	        this.error = error;
+	        this.prevSibling = null;
 
 	        this.children = [];
 	        this.x = 0;
@@ -75,6 +76,8 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	let width;
 	let height;
 	let maxDelay;
+	let nbRequestsQ1;
+	let nbRequestsQ3;
 
 	!(__WEBPACK_AMD_DEFINE_ARRAY__ = [
 	            __webpack_require__(1),
@@ -121,9 +124,9 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                }
 	            }
 	            
-	            if (isOneFieldMissing) {
-	                throw new SplunkVisualizationBase.VisualizationError("Missing at least one mandatory field. Missing: \'" + missingField + "\'");
-	            }
+	            // if (isOneFieldMissing) {
+	            //     throw new SplunkVisualizationBase.VisualizationError("Missing at least one mandatory field. Missing: \'" + missingField + "\'");
+	            // }
 
 	            return data;
 	        },
@@ -147,14 +150,14 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	            let nodes = this.formatInputAndCreateRootNode(data);
 	            // console.log(nodes);
 
-	            this.buildTreeRecursively(rootNode, nodes);
+	            this.setNbRequestsQuarters(nodes);
+
+	            this.buildTreeRecursively(rootNode, nodes, 2);
 	            this.prepareData(rootNode, null, 0);
 	            this.calculateInitialValues(rootNode);
 	            this.calculateFinalValues(rootNode, 0);
 	            this.updateYVals(rootNode);
 	            this.fixNodeConflicts(rootNode);
-
-	            // console.log(rootNode);
 
 	            // Creating objects for graph construction
 	            let chartData = [];
@@ -178,7 +181,6 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                        layout: 'none',
 	                        // Nodes configuration and styling
 	                        symbol: 'circle',
-	                        symbolSize: 40,
 	                        itemStyle: {
 	                            color: '#333333',
 	                            borderColor: '#999999',
@@ -190,10 +192,7 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                        },
 	                        // Links and edges configuration and styling
 	                        lineStyle: {
-	                            type: 'dashed',
 	                            opacity: 0.9,
-	                            width: 2,
-	                            curveness: 0
 	                        },
 	                        edgeSymbol: ['circle', 'arrow'],
 	                        edgeSymbolSize: [4, 10],
@@ -208,30 +207,66 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 	        },
 
+	        setNbRequestsQuarters: function(nodes) {
+	            var minRequests = Number.POSITIVE_INFINITY;
+	            var maxRequests = Number.NEGATIVE_INFINITY;
+	            var tmp;
+	            for (var i = 0 ; i < nodes.length ; i++ ) {
+	                tmp = parseInt(nodes[i].nbRequests);
+	                if (tmp < minRequests) minRequests = tmp;
+	                if (tmp > maxRequests) maxRequests = tmp;
+	            }
+
+	            let middle = (maxRequests + minRequests) /2;
+	            nbRequestsQ1 = (middle + minRequests) /2;
+	            nbRequestsQ3 = (middle + maxRequests) /2;
+
+	        },
+
 	        formatInputAndCreateRootNode: function(data) {
 	            let fields = data.fields;
 	            let rows = data.rows;
 	            var nodes = [];
 	            var masterNode = {};
+	            let id = 1;
 	            rows.forEach(row => {
 	                let node = {};
+	                node.id = id;
+	                id++;
 	                fields.forEach(function(field, index) {
 	                    node[field.name] = row[index];
 	                });
-	                if(node.parentId == null){
+	                if(node.parentName === ""){
 	                    masterNode = node;
 	                }
 	                nodes.push(node);
 	            });
-	            rootNode = new TreeNodeModel(masterNode.id, masterNode.timestamp, masterNode.duration, masterNode.kind, masterNode.name, masterNode.parentId, masterNode.traceId, null, null, masterNode.error);
+	            rootNode = new TreeNodeModel(
+	                masterNode.id,
+	                masterNode.name,
+	                null,
+	                parseFloat(masterNode.avgLatency),
+	                parseFloat(masterNode.avgDuration),
+	                null, parseInt(masterNode.nbRequests),
+	                parseInt(masterNode.nbErrors)
+	            );
 	            return nodes;
 	        },
 
 	        buildTreeRecursively: function(node, nodesList) {
 	            if(nodesList){
 	                nodesList.forEach(n => {
-	                    if(node.id === n.parentId){
-	                        let graphNode = new TreeNodeModel(n.id, n.timestamp, n.duration, n.kind, n.name, n.parentId, n.traceId, node, null, n.error);
+	                    if(node.name === n.parentName){
+	                        let graphNode = new TreeNodeModel(
+	                            n.id,
+	                            n.name,
+	                            node.name,
+	                            parseFloat(n.avgLatency),
+	                            parseFloat(n.avgDuration),
+	                            node,
+	                            parseInt(n.nbRequests),
+	                            parseInt(n.nbErrors)
+	                        );
 	                        this.buildTreeRecursively(graphNode, nodesList);
 	                        node.children.push(graphNode);
 	                    }
@@ -371,25 +406,61 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 
 	        createGraphNodesAndLinks: function(node, data, links, levelWidth, levelHeight) {
 
+	            // Node size and link width depending on nbRequests
+	            let symbolSize = 35;
+	            let lineStyle = {};
+	            lineStyle.width = 2;
+	            lineStyle.type = [20, 3];
+
+	            if (node.nbRequests < nbRequestsQ1) {
+	                symbolSize = 20;
+	                lineStyle.width = 1;
+	                lineStyle.type = [10, 2];
+	            }
+	            else if (node.nbRequests > nbRequestsQ3) {
+	                symbolSize = 60;
+	                lineStyle.width = 4;
+	                lineStyle.type = [35, 3];
+	            }
+	            
+	            // Node color depending on error rate
 	            let itemStyle = {};
 	            let tooltip = {
 	                formatter: '{b}'
+	                + '<br/> requests: ' + node.nbRequests
 	            };
 	            let nodeLabel = {}
-	            if(node.error){
+	            if (node.errorRate > 0.2) {
+	                itemStyle = {
+	                    color: '#CD3C14',
+	                    shadowColor: '#CD3C14',
+	                    shadowBlur: 10
+	                };
+	                tooltip = {
+	                    formatter: '{b}' 
+	                    + '<br/> error rate: '+ Math.round(node.errorRate * 100) / 100
+	                    + '<br/> errors: ' + node.nbErrors
+	                    + '<br/> requests: ' + node.nbRequests
+	                    
+	                };
+	            }
+	            
+	            else if(node.errorRate > 0.05 && node.errorRate <= 0.2) {
 	                itemStyle = {
 	                    color: '#FF7900',
 	                    shadowColor: '#FF7900',
 	                    shadowBlur: 10
 	                };
 	                tooltip = {
-	                    formatter: '{b} <br/> error: ' + node.error
+	                    formatter: '{b}' 
+	                    + '<br/> error rate: '+ Math.round(node.errorRate * 100) / 100
+	                    + '<br/> errors: ' + node.nbErrors
+	                    + '<br/> requests: ' + node.nbRequests
+	                    
 	                };
-	                nodeLabel = {
-	                    color: '#FF7900',
-	                    fontWeight: 'bold'
-	                }
 	            }
+	            
+	            // Pushing the node to the graph
 	            data.push({
 	                id: node.id,
 	                name: node.name,
@@ -397,12 +468,22 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                y: node.finalY * levelHeight,
 	                itemStyle: itemStyle,
 	                tooltip: tooltip,
-	                label: nodeLabel
+	                label: nodeLabel,
+	                symbolSize: symbolSize
 	            });
 	            
+	            // Links
 	            if (node.parent) {
-	                let lineStyle = {}
-	                let delay = (node.timestamp - node.parent.timestamp);
+
+	                // Color link
+	                if (node.errorRate > 0.2) {
+	                    lineStyle.color = '#CD3C14';
+	                }
+	                else if(node.errorRate > 0.05 && node.errorRate <= 0.2) {
+	                    lineStyle.color = '#FF7900';
+	                }
+
+	                let delay = node.latency;
 	                let label = {
 	                    show: true,
 	                    formatter: function(fdata) {
@@ -418,16 +499,18 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                        return Math.round(delay * 100) / 100 + ' ' + timeUnit;
 	                    }
 	                }
+
+	                // Color label link if delay too long
 	                if(delay > maxDelay){
-	                    lineStyle = {
-	                        width: 4,
-	                    };
 	                    label.fontWeight = 'bold';
-	                    label.color = '#FF7900';
+	                    label.fontSize = 20;
+	                    label.color = '#cd3c14';
 	                }
+
+	                //Push link to list
 	                links.push({
-	                    source: node.parent.id,
-	                    target: node.id,
+	                    source: node.parent.id.toString(),
+	                    target: node.id.toString(),
 	                    label: label,
 	                    lineStyle: lineStyle
 	                })
@@ -476,7 +559,6 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                        layout: 'none',
 	                        // Nodes configuration and styling
 	                        symbol: 'circle',
-	                        symbolSize: 40,
 	                        itemStyle: {
 	                            color: '#333333',
 	                            borderColor: '#999999',
@@ -490,8 +572,6 @@ define(["api/SplunkVisualizationBase","api/SplunkVisualizationUtils"], function(
 	                        lineStyle: {
 	                            type: 'dashed',
 	                            opacity: 0.9,
-	                            width: 2,
-	                            curveness: 0
 	                        },
 	                        edgeSymbol: ['circle', 'arrow'],
 	                        edgeSymbolSize: [4, 10],
