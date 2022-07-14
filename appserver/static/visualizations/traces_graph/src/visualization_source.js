@@ -4,15 +4,21 @@
 
 class TreeNodeModel {
 
-    constructor(id, name, parentName, latency, duration, parent, nbRequests, nbErrors){
+    constructor(id, name, parentName, latency, duration, parent, requests, errors, requestsTh, errorsTh, errorRateTh, latencyTh, durationTh){
         this.id = id;
         this.name = name;
         this.parentName = parentName;
         this.latency = latency;
         this.duration = duration;
-        this.nbRequests = nbRequests;
-        this.nbErrors = nbErrors;
-        this.errorRate = Math.round((nbErrors / nbRequests) * 100) / 100 ;
+        this.requests = requests;
+        this.errors = errors;
+        this.errorRate = Math.round((errors / requests) * 100) / 100 ;
+
+        this.requestsTh = requestsTh;
+        this.errorsTh = errorsTh;
+        this.errorRateTh = errorRateTh;
+        this.latencyTh = latencyTh;
+        this.durationTh = durationTh;
 
         this.parent = parent;
         this.prevSibling = null;
@@ -29,9 +35,26 @@ let myChart;
 let rootNode;
 let width;
 let height;
-let maxDelay;
 let nbRequestsQ1;
 let nbRequestsQ3;
+
+// Thresholds
+let thLatencyMin1;
+let thLatencyMax1;
+let thLatencyColor1;
+let thLatencyMin2;
+let thLatencyMax2;
+let thLatencyColor2;
+
+let thErrorRateMin1;
+let thErrorRateMax1;
+let thErrorRateColor1;
+let thErrorRateMin2;
+let thErrorRateMax2;
+let thErrorRateColor2;
+
+// Theme
+let theme;
 
 define([
             'jquery',
@@ -66,7 +89,7 @@ define([
         // The returned object will be passed to updateView as 'data'
         formatData: function(data) {
 
-            let mandatoryFields = ["traceId", "id", "parentId", "name", "timestamp"];
+            let mandatoryFields = ["parentName", "name", "requests", "errors", "duration", "latency"];
             let fieldsName = data.fields.map(field => field.name);
             
             let isOneFieldMissing = false;
@@ -79,9 +102,9 @@ define([
                 }
             }
             
-            // if (isOneFieldMissing) {
-            //     throw new SplunkVisualizationBase.VisualizationError("Missing at least one mandatory field. Missing: \'" + missingField + "\'");
-            // }
+            if (isOneFieldMissing) {
+                throw new SplunkVisualizationBase.VisualizationError("Missing at least one mandatory field. Missing: \'" + missingField + "\'");
+            }
 
             return data;
         },
@@ -92,12 +115,30 @@ define([
         updateView: function(data, config) {
 
             // Initialize chart with DOM
-            myChart = echarts.init(this.el);
-            var option = {};
+            if (!myChart) {
+                myChart = echarts.init(this.el);
+            }
+                var option = {};
             width =  myChart._dom.clientWidth;
             height = myChart._dom.clientHeight;
+
             // Getting conf / format menu properties if exists
-            maxDelay = config[this.getPropertyNamespaceInfo().propertyNamespace + 'maxDelay'] || 2000;
+            // Latency thresholds
+            thLatencyMin1 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_latency_min_1'] || 1000;
+            thLatencyMax1 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_latency_max_1'] || 1999;
+            thLatencyColor1 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_latency_color_1'] || '#FFCC00';
+            thLatencyMin2 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_latency_min_2'] || 2000;
+            thLatencyMax2 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_latency_max_2'] || 9999999;
+            thLatencyColor2 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_latency_color_2'] || '#CD3C14';
+            // Error rate thresholds
+            thErrorRateMin1 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_errorRate_min_1'] || 5;
+            thErrorRateMax1 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_errorRate_max_1'] || 19;
+            thErrorRateColor1 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_errorRate_color_1'] || '#FFCC00';
+            thErrorRateMin2 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_errorRate_min_2'] || 20;
+            thErrorRateMax2 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_errorRate_max_2'] || 100;
+            thErrorRateColor2 = config[this.getPropertyNamespaceInfo().propertyNamespace + 'th_errorRate_color_2'] || '#CD3C14';
+
+            theme = config[this.getPropertyNamespaceInfo().propertyNamespace + 'theme'] || 'dark';
 
             // logic here to build options from data
 
@@ -128,7 +169,7 @@ define([
                 tooltip: {},
                 animationDurationUpdate: 1500,
                 animationEasingUpdate: 'quinticInOut',
-                backgroundColor: '#000000',
+                backgroundColor: theme === 'dark' ? '#000000' : '#FFFFFF' ,
                 darkMode: true,
                 series: [
                     {
@@ -137,17 +178,18 @@ define([
                         // Nodes configuration and styling
                         symbol: 'circle',
                         itemStyle: {
-                            color: '#333333',
-                            borderColor: '#999999',
-                            borderWidth: 2,
+                            color: theme === 'dark' ? '#333333' : '#FFFFFF',
+                            borderColor: theme === 'dark' ? '#999999' : '#CCCCCC',
+                            borderWidth: 1.5,
                         },
                         label: {
                             show: true,
-                            position: 'bottom'
+                            position: 'bottom',
                         },
                         // Links and edges configuration and styling
                         lineStyle: {
-                            opacity: 0.9,
+                            color: theme === 'dark' ? '#666666' : '#999999',
+                            opacity: 0.9
                         },
                         edgeSymbol: ['circle', 'arrow'],
                         edgeSymbolSize: [4, 10],
@@ -167,7 +209,7 @@ define([
             var maxRequests = Number.NEGATIVE_INFINITY;
             var tmp;
             for (var i = 0 ; i < nodes.length ; i++ ) {
-                tmp = parseInt(nodes[i].nbRequests);
+                tmp = parseInt(nodes[i].requests);
                 if (tmp < minRequests) minRequests = tmp;
                 if (tmp > maxRequests) maxRequests = tmp;
             }
@@ -200,10 +242,15 @@ define([
                 masterNode.id,
                 masterNode.name,
                 null,
-                parseFloat(masterNode.avgLatency),
-                parseFloat(masterNode.avgDuration),
-                null, parseInt(masterNode.nbRequests),
-                parseInt(masterNode.nbErrors)
+                parseFloat(masterNode.latency),
+                parseFloat(masterNode.duration),
+                null, parseInt(masterNode.requests),
+                parseInt(masterNode.errors),
+                masterNode.requestsTh,
+                masterNode.errorsTh,
+                masterNode.errorRateTh,
+                masterNode.latencyTh,
+                masterNode.durationTh
             );
             return nodes;
         },
@@ -216,11 +263,16 @@ define([
                             n.id,
                             n.name,
                             node.name,
-                            parseFloat(n.avgLatency),
-                            parseFloat(n.avgDuration),
+                            parseFloat(n.latency),
+                            parseFloat(n.duration),
                             node,
-                            parseInt(n.nbRequests),
-                            parseInt(n.nbErrors)
+                            parseInt(n.requests),
+                            parseInt(n.errors),
+                            n.requestsTh,
+                            n.errorsTh,
+                            n.errorRateTh,
+                            n.latencyTh,
+                            n.durationTh
                         );
                         this.buildTreeRecursively(graphNode, nodesList);
                         node.children.push(graphNode);
@@ -361,67 +413,59 @@ define([
 
         createGraphNodesAndLinks: function(node, data, links, levelWidth, levelHeight) {
 
-            // Node size and link width depending on nbRequests
-            let symbolSize = 35;
-            let lineStyle = {};
-            lineStyle.width = 2;
-            lineStyle.type = [20, 3];
+            // Node symbolSize and link width and type depending on requests number
+            let [symbolSize, lineStyle] = this.getNodeStyleFromRequestsNb(node);
+            let duration = this.formatTime(node.duration);
+            let nodeLabel = this.getFormattedNodeLabel(node, symbolSize, duration);
 
-            if (node.nbRequests < nbRequestsQ1) {
-                symbolSize = 20;
-                lineStyle.width = 1;
-                lineStyle.type = [10, 2];
-            }
-            else if (node.nbRequests > nbRequestsQ3) {
-                symbolSize = 60;
-                lineStyle.width = 4;
-                lineStyle.type = [35, 3];
+            // Style depending on error rate threshold set
+            if (node.errorRate >= 0.05) {
+                [nodeLabel, lineStyle] = this.styleBasedOnErrorRateThreshold(node, nodeLabel, lineStyle);
             }
             
-            // Node color depending on error rate
-            let itemStyle = {};
+            let [backgroundColor, borderColor, textColor] = this.getTooltipColorsDependingOnTheme();
+            
+
             let tooltip = {
-                formatter: '{b}'
-                + '<br/> requests: ' + node.nbRequests
+                backgroundColor: backgroundColor,
+                borderColor: borderColor,
+                formatter: '' +
+                '<h4>' + node.name + '</h4>' +
+                '<div class="stats">' +
+                    '<div class="row">' +
+                        '<p class="number">' + node.requests + '</p>' +
+                        '<p class="stats-name requests">Requests</p>' +
+                    '</div>' +
+                    '<div class="row">' +
+                        '<p class="number">' + node.errors + ' (' + node.errorRate + '%)' + '</p>' +
+                        '<p class="stats-name errors">Errors</p>' +
+                    '</div>' +
+                    '<div class="row">' +
+                       ' <p class="number">' + this.formatTime(node.latency) + '</p>' +
+                        '<p class="stats-name latency">Latency</p>' +
+                    '</div>' +
+                    '<div class="row">' +
+                        '<p class="number">' + this.formatTime(node.duration) + '</p>' +
+                        '<p class="stats-name duration">Duration</p>' +
+                    '</div>' +
+                '</div>' +
+                '<style>' +
+                    'h4 { color:' + textColor +'; font-weight: bold }' +
+                    '.stats { display: flex; flex-direction: column; }' +
+                    '.row { display: flex; margin: 2px 0; }' +
+                    'p { margin: 0%; }'  +
+                    '.number { width: 75px; color:' + textColor + '}' +
+                    '.stats-name  {margin-left: 5px; }' +
+                    '.requests { color: #A885D8; }' +
+                    '.errors { color: #CD3C14 }' +
+                    '.latency { color: #50BE87; }' +
+                    '.duration { color: #4BB4E6; }' +
+                '</style>'
             };
-            let nodeLabel = {}
-            if (node.errorRate > 0.2) {
-                itemStyle = {
-                    color: '#CD3C14',
-                    shadowColor: '#CD3C14',
-                    shadowBlur: 10
-                };
-                tooltip = {
-                    formatter: '{b}' 
-                    + '<br/> error rate: '+ Math.round(node.errorRate * 100) / 100
-                    + '<br/> errors: ' + node.nbErrors
-                    + '<br/> requests: ' + node.nbRequests
-                    
-                };
-            }
-            
-            else if(node.errorRate > 0.05 && node.errorRate <= 0.2) {
-                itemStyle = {
-                    color: '#FF7900',
-                    shadowColor: '#FF7900',
-                    shadowBlur: 10
-                };
-                tooltip = {
-                    formatter: '{b}' 
-                    + '<br/> error rate: '+ Math.round(node.errorRate * 100) / 100
-                    + '<br/> errors: ' + node.nbErrors
-                    + '<br/> requests: ' + node.nbRequests
-                    
-                };
-            }
             
             // Pushing the node to the graph
             data.push({
-                id: node.id,
-                name: node.name,
-                x: node.x * levelWidth,
-                y: node.finalY * levelHeight,
-                itemStyle: itemStyle,
+                id: node.id, name: node.name, x: node.x * levelWidth, y: node.finalY * levelHeight,
                 tooltip: tooltip,
                 label: nodeLabel,
                 symbolSize: symbolSize
@@ -430,50 +474,274 @@ define([
             // Links
             if (node.parent) {
 
-                // Color link
-                if (node.errorRate > 0.2) {
-                    lineStyle.color = '#CD3C14';
-                }
-                else if(node.errorRate > 0.05 && node.errorRate <= 0.2) {
-                    lineStyle.color = '#FF7900';
-                }
-
-                let delay = node.latency;
-                let label = {
-                    show: true,
-                    formatter: function(fdata) {
-                        let timeUnit = 'ms';
-                        if (delay > 1000) {
-                            delay = delay / 1000;
-                            timeUnit = 's';
-                        }
-                        else if (delay < 1) {
-                            delay = delay * 1000;
-                            timeUnit = 'µs';
-                        }
-                        return Math.round(delay * 100) / 100 + ' ' + timeUnit;
-                    }
-                }
-
-                // Color label link if delay too long
-                if(delay > maxDelay){
-                    label.fontWeight = 'bold';
-                    label.fontSize = 20;
-                    label.color = '#cd3c14';
-                }
-
+                // Style if latency threshold set
+                let [linkLabel, linkTooltip] = this.styleBasedOnLatencyThreshold(node);
+            
                 //Push link to list
                 links.push({
                     source: node.parent.id.toString(),
                     target: node.id.toString(),
-                    label: label,
-                    lineStyle: lineStyle
-                })
+                    label: linkLabel,
+                    lineStyle: lineStyle,
+                    tooltip: linkTooltip
+                });
             }
 
             for (let i = 0; i < node.children.length; i++) {
                 this.createGraphNodesAndLinks(node.children[i], data, links, levelWidth, levelHeight);
             }
+        },
+
+        getNodeStyleFromRequestsNb: function(node) {
+            // Default values
+            let symbolSize = 45;
+            let lineStyle = {};
+            lineStyle.width = 2;
+            lineStyle.type = [20, 3];
+
+            if (node.requests < nbRequestsQ1) {
+                symbolSize = 25;
+                lineStyle.width = 1;
+                lineStyle.type = [10, 2];
+            }
+            else if (node.requests > nbRequestsQ3) {
+                symbolSize = 75;
+                lineStyle.width = 4;
+                lineStyle.type = [35, 3];
+            }
+
+            return [symbolSize, lineStyle];
+        },
+
+        formatTime: function(timeInMs) {
+            if(!isNaN(timeInMs)){
+                let time = timeInMs;
+                let timeUnit = 'ms';
+                if (timeInMs > 1000) {
+                    time = timeInMs / 1000;
+                    timeUnit = 's';
+                }
+                else if (timeInMs < 1 && timeInMs >= 0.001) {
+                    time = timeInMs * 1000;
+                    timeUnit = 'µs';
+                }
+                else if (timeInMs < 0.001) {
+                    time = timeInMs * 1000000
+                    timeUnit = 'ns'
+                }
+                return Math.round(time * 100) / 100 + ' ' + timeUnit;
+            }
+            return '-';
+        },
+
+        getFormattedNodeLabel: function(node, symbolSize, duration) {
+            // Default node label if error rate low
+            let nodeLabel = {
+                position: 'bottom',
+                color: theme === 'dark' ? '#CCCCCC' : '#333333',
+                backgroundColor: theme === 'dark' ? 'rgba(51, 51, 51, 0.8)' : 'rgba(221, 221, 221, 0.8)',
+                padding: [6, 6],
+                formatter: '{nameStyle|{b}} {durationStyle|' +  duration + '}',
+                rich: {
+                    nameStyle: { fontWeight: 'bold' },
+                    durationStyle: { fontSize: 10 }
+                },
+            }
+            
+            // If error rate high then draw an inner circle
+            if (node.errorRate >= 0.05) {
+                nodeLabel = {
+                    position: 'inside',
+                    backgroundColor: 'transparent',
+                    width: symbolSize,
+                    height: symbolSize,
+                    align: 'center',
+                    formatter: 
+                        '{upperBufferShapeStyle|}' + 
+                        '\n' + 
+                        '{errorRateStyle|}' +  
+                        '\n' +
+                        '{lowerBufferShapeStyle|}' +
+                        '\n' + 
+                        '{labelStyle|{b}}{durationStyle|' + duration + '}',
+                    rich: {
+                        upperBufferShapeStyle: { height: 0, width: 0},
+                        errorRateStyle: { backgroundColor: 'red', borderRadius: 50, height: 0, width: 0 },
+                        lowerBufferShapeStyle: { height: 0, width: 0},
+                        labelStyle: {
+                            height: 12,
+                            padding: [6, 2, 6, 4],
+                            color: theme === 'dark' ? '#CCCCCC' : '#333333',
+                            backgroundColor: theme === 'dark' ? 'rgba(51, 51, 51, 0.8)' : 'rgba(221, 221, 221, 0.8)',
+                            fontWeight: 'bold'
+                        },
+                        durationStyle: {
+                            height: 12,
+                            fontSize: 10,
+                            padding: [6, 4, 6, 2],
+                            color: theme === 'dark' ? '#CCCCCC' : '#333333',
+                            backgroundColor: theme === 'dark' ? 'rgba(51, 51, 51, 0.8)' : 'rgba(221, 221, 221, 0.8)',
+                        }
+                    }
+                }
+
+                let errorRateSize = symbolSize * node.errorRate;
+                let bufferShapeHeight = (symbolSize / 2) - (errorRateSize / 2);
+
+                nodeLabel.rich.upperBufferShapeStyle.height = bufferShapeHeight;
+                nodeLabel.rich.lowerBufferShapeStyle.height = bufferShapeHeight + 5;
+                nodeLabel.rich.errorRateStyle.height = errorRateSize;
+                nodeLabel.rich.errorRateStyle.width = errorRateSize;
+            }
+
+            return nodeLabel;
+        },
+
+        styleBasedOnErrorRateThreshold: function(node, nodeLabel, lineStyle) {
+            if (node.errorRateTh) {
+                let arr = node.errorRateTh.split(',');
+                for (let i = 0 ; i < arr.length ; i += 3) {
+                    // Getting bounds of threshold
+                    let inf_bound = parseInt(arr[i]) / 100;
+                    let sup_bound = Infinity;
+                    if (arr[i+1] !== "max"){
+                        sup_bound = parseInt(arr[i+1]) / 100;
+                    }
+
+                    // Check if latency is in threshold interval
+                    if (inf_bound < node.errorRate && node.errorRate <= sup_bound) {
+
+                        // Get threshold color and potential name
+                        let color = arr[i+2];
+                        let thName = "";
+                        if (color.includes('=')) {
+                            let splitted = color.split('=');
+                            thName = splitted[0];
+                            color = splitted[1];
+
+                        }
+                        nodeLabel.rich.errorRateStyle.backgroundColor = color;
+                        if (node.parent) {
+                            lineStyle.color = color;
+                        }
+                    } 
+                }
+            }
+            // Use format menu
+            else {
+                let errorRate = node.errorRate * 100;
+                let color = "";
+                if (errorRate >= thErrorRateMin1 && errorRate < thErrorRateMax1 ) {
+                    color = thErrorRateColor1;
+                }
+                else if (errorRate >= thErrorRateMin2 && errorRate < thErrorRateMax2) {
+                    color = thErrorRateColor2;
+                }
+                nodeLabel.rich.errorRateStyle.backgroundColor = color;
+                if (node.parent) {
+                    lineStyle.color = color;
+                }
+            }
+
+            return [nodeLabel, lineStyle];
+        },
+
+        getTooltipColorsDependingOnTheme: function() {
+            let backgroundColor = '#000000';
+            let borderColor = '#333333';
+            let textColor = '#CCCCCC';
+            if (theme === 'light') {
+                backgroundColor = '#FFFFFF';
+                borderColor = '#999999';
+                textColor = '#333333';
+            }
+            return [backgroundColor, borderColor, textColor];
+        },
+
+        styleBasedOnLatencyThreshold: function(node) {
+
+            let linkLabel = {
+                show: true,
+                formatter: this.formatTime(node.latency)
+            }
+
+            let [backgroundColor, borderColor, textColor] = this.getTooltipColorsDependingOnTheme();
+
+            let linkTooltip = {
+                backgroundColor: backgroundColor,
+                borderColor: borderColor,
+                formatter: '' +
+                '<h4>' + node.parent.name + ' > ' + node.name + '</h4>' +
+                '<div class="stats">' +
+                    '<div class="row">' +
+                        '<p class="number">' + node.requests + '</p>' +
+                        '<p class="stats-name requests">Requests</p>' +
+                    '</div>' +
+                    '<div class="row">' +
+                        '<p class="number">' + node.errors + ' (' + node.errorRate + '%)' + '</p>' +
+                        '<p class="stats-name errors">Errors</p>' +
+                    '</div>' +
+                    '<div class="row">' +
+                       ' <p class="number">' + this.formatTime(node.latency) + '</p>' +
+                        '<p class="stats-name latency">Latency</p>' +
+                    '</div>' +
+                '</div>' +
+                '<style>' +
+                    'h4 { color:' + textColor + '; font-weight: bold }' +
+                    '.stats { display: flex; flex-direction: column; }' +
+                    '.row { display: flex; margin: 2px 0; }' +
+                    'p { margin: 0%; }'  +
+                    '.number { width: 75px; color:' + textColor + '}' +
+                    '.stats-name  {margin-left: 5px; }' +
+                    '.requests { color: #A885D8; }' +
+                    '.errors { color: #CD3C14 }' +
+                    '.latency { color: #50BE87; }' +
+                '</style>'        
+            }
+            
+            if (node.latencyTh) {
+                let arr = node.latencyTh.split(',');
+                for (let i = 0 ; i < arr.length ; i += 3) {
+                    // Getting bounds of threshold
+                    let inf_bound = parseInt(arr[i]);
+                    let sup_bound = Infinity;
+                    if (arr[i+1] !== "max") {
+                        sup_bound = parseInt(arr[i+1]);
+                    }
+
+                    // Check if latency is in threshold interval
+                    if (inf_bound < node.latency && node.latency <= sup_bound) {
+                        // Get threshold color and potential name
+                        let color = arr[i+2];
+                        let thName = "";
+                        if (color.includes('=')) {
+                            let splitted = color.split('=');
+                            thName = splitted[0];
+                            color = splitted[1];
+                            // linkTooltip.formatter = node.parent.name + ' > ' + node.name + '<br/> delay: ' + thName
+                        }
+                        linkLabel.fontWeight = 'bold';
+                        linkLabel.color = color;
+                    }
+                    
+                }
+            }
+            // Use formatter
+            else {
+                let latency = node.latency;
+                let color = "#999999";
+                if (latency >= thLatencyMin1 && latency < thLatencyMax1 ) {
+                    color = thLatencyColor1;
+                    linkLabel.fontWeight = 'bold';
+                }
+                else if (latency >= thLatencyMin2 && latency < thLatencyMax2) {
+                    color = thLatencyColor2;
+                    linkLabel.fontWeight = 'bold';
+                }
+                linkLabel.color = color;
+            }
+            
+            return [linkLabel, linkTooltip]; 
         },
 
         // Search data params
@@ -506,7 +774,7 @@ define([
                 tooltip: {},
                 animationDurationUpdate: 1500,
                 animationEasingUpdate: 'quinticInOut',
-                backgroundColor: '#000000',
+                backgroundColor: theme === 'dark' ? '#000000' : '#FFFFFF' ,
                 darkMode: true,
                 series: [
                     {
@@ -515,18 +783,18 @@ define([
                         // Nodes configuration and styling
                         symbol: 'circle',
                         itemStyle: {
-                            color: '#333333',
-                            borderColor: '#999999',
-                            borderWidth: 2,
+                            color: theme === 'dark' ? '#333333' : '#FFFFFF',
+                            borderColor: theme === 'dark' ? '#999999' : '#CCCCCC',
+                            borderWidth: 1.5,
                         },
                         label: {
                             show: true,
-                            position: 'bottom'
+                            position: 'bottom',
                         },
                         // Links and edges configuration and styling
                         lineStyle: {
-                            type: 'dashed',
-                            opacity: 0.9,
+                            color: theme === 'dark' ? '#666666' : '#999999',
+                            opacity: 0.9
                         },
                         edgeSymbol: ['circle', 'arrow'],
                         edgeSymbolSize: [4, 10],
