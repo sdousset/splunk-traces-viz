@@ -169,7 +169,7 @@ define([
                 tooltip: {},
                 animationDurationUpdate: 1500,
                 animationEasingUpdate: 'quinticInOut',
-                backgroundColor: theme === 'dark' ? '#000000' : '#FFFFFF' ,
+                backgroundColor: theme === 'dark' ? '#000000' : '#F9F9F9' ,
                 darkMode: true,
                 series: [
                     {
@@ -178,7 +178,7 @@ define([
                         // Nodes configuration and styling
                         symbol: 'circle',
                         itemStyle: {
-                            color: theme === 'dark' ? '#333333' : '#FFFFFF',
+                            color: theme === 'dark' ? '#333333' : '#F9F9F9',
                             borderColor: theme === 'dark' ? '#999999' : '#CCCCCC',
                             borderWidth: 1.5,
                         },
@@ -437,7 +437,7 @@ define([
                         '<p class="stats-name requests">Requests</p>' +
                     '</div>' +
                     '<div class="row">' +
-                        '<p class="number">' + node.errors + ' (' + node.errorRate + '%)' + '</p>' +
+                        '<p class="number">' + node.errors + ' (' + node.errorRate * 100 + '%)' + '</p>' +
                         '<p class="stats-name errors">Errors</p>' +
                     '</div>' +
                     '<div class="row">' +
@@ -631,10 +631,10 @@ define([
             else {
                 let errorRate = node.errorRate * 100;
                 let color = "";
-                if (errorRate >= thErrorRateMin1 && errorRate < thErrorRateMax1 ) {
+                if (errorRate >= thErrorRateMin1 && errorRate <= thErrorRateMax1 ) {
                     color = thErrorRateColor1;
                 }
-                else if (errorRate >= thErrorRateMin2 && errorRate < thErrorRateMax2) {
+                else if (errorRate >= thErrorRateMin2 && errorRate <= thErrorRateMax2) {
                     color = thErrorRateColor2;
                 }
                 nodeLabel.rich.errorRateStyle.backgroundColor = color;
@@ -730,11 +730,11 @@ define([
             else {
                 let latency = node.latency;
                 let color = "#999999";
-                if (latency >= thLatencyMin1 && latency < thLatencyMax1 ) {
+                if (latency >= thLatencyMin1 && latency <= thLatencyMax1 ) {
                     color = thLatencyColor1;
                     linkLabel.fontWeight = 'bold';
                 }
-                else if (latency >= thLatencyMin2 && latency < thLatencyMax2) {
+                else if (latency >= thLatencyMin2 && latency <= thLatencyMax2) {
                     color = thLatencyColor2;
                     linkLabel.fontWeight = 'bold';
                 }
@@ -774,7 +774,7 @@ define([
                 tooltip: {},
                 animationDurationUpdate: 1500,
                 animationEasingUpdate: 'quinticInOut',
-                backgroundColor: theme === 'dark' ? '#000000' : '#FFFFFF' ,
+                backgroundColor: theme === 'dark' ? '#000000' : '#F9F9F9' ,
                 darkMode: true,
                 series: [
                     {
@@ -783,7 +783,7 @@ define([
                         // Nodes configuration and styling
                         symbol: 'circle',
                         itemStyle: {
-                            color: theme === 'dark' ? '#333333' : '#FFFFFF',
+                            color: theme === 'dark' ? '#333333' : '#F9F9F9',
                             borderColor: theme === 'dark' ? '#999999' : '#CCCCCC',
                             borderWidth: 1.5,
                         },
