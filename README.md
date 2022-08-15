@@ -2,9 +2,41 @@
 
 This splunk application contains a visualization that uses [apache echarts library](https://echarts.apache.org/en/index.html) to show logs traces.
 
-## TODO: SPECIFICATIONS & USAGE
+## Usage
+
+You must supply the following information in your seach, for example by ending it with :
+
+```
+your search here
+| table parentName name requests errors duration latency
+```
+
+- Times are in ms.
+- Root span parentName must be empty string.
+
+Each row represents a span having different information
+Mandatory:
+- parentName: the name of span’s parent if applicable
+- name: unique name of span
+- requests: number of requests for span
+- errors: number of errors for span
+- duration: duration for span
+- latency: elapsed time (in ms) between the span and its parent
+	
+Thresholding:
+
+```inf_bound,max_bound,[name=]color```
+
+Example: ```0,300,green,300,800,warning=orange,800,max,critical=#800000```
+
+Possible thresholds:
+- latencyTh
+- errorRateTh
+
 
 ## Building the visualization
+
+Clone this repository into your ```$SPLUNK_HOME/etc/apps/ ``` directory.
 
 	NOTE: You must have npm installed in oder to build. If you do not have npm installed, install it and come back. 
 	
