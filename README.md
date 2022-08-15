@@ -1,3 +1,5 @@
+![](/appserver/static/visualizations/traces_graph/traces_dark.PNG)
+
 # Splunk traces visualization
 
 This splunk application contains a visualization that uses [apache echarts library](https://echarts.apache.org/en/index.html) to show logs traces.
