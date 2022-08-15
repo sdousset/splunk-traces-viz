@@ -53,6 +53,16 @@ $ npm run build
 
 This will create a *visualization.js* file in the visualization directory. 
 
+## TODO's
+
+TODO:
+- Add a legend
+- Show the name of the threshold in tooltip
+- Code refactors
+- Drilldown
+- Icons
+
+
 ## More Information
 For more information on building custom visualizations including a tutorial, API overview, and more see:
 
